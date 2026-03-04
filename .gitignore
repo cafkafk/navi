@@ -1,0 +1,5 @@
+result*
+/target
+/.direnv
+/.vscode
+.navi/

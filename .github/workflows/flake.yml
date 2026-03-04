@@ -1,0 +1,59 @@
+name: 'Nix'
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  list-checks:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+      - name: List checks
+        id: set-matrix
+        run: |
+          CHECKS=$(nix flake show --json | nix run nixpkgs#jq -- -c '.checks."x86_64-linux" | keys - ["nixos-module-tests"]')
+          echo "matrix=$CHECKS" >> "$GITHUB_OUTPUT"
+
+  checks:
+    needs: list-checks
+    name: Check ${{ matrix.check }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJson(needs.list-checks.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+      - name: Restore and cache Nix store
+        uses: nix-community/cache-nix-action@v3
+        with:
+kage.json', '**/package-lock.json') }}
+          key: cache-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', '**/package.json', '**/package-lock.json') }}
+          restore-keys: |
+            cache-${{ runner.os }}-
+          purge-key: cache-${{ runner.os }}-
+          purge-created: true
+          purge-created-max-age: 42
+      - name: Run check
+        run: nix build -L ./#checks.x86_64-linux.${{ matrix.check }}
+  conventional:
+    name: All Commits Conventional
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: webiny/action-conventional-commits@v1.3.0
