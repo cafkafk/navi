@@ -4,7 +4,7 @@
 > development.  Features, commands, and configuration formats are subject to
 > breaking changes without notice. Use with caution. THIS GOES FOR THIS README
 > AS WELL.
->
+
 > [!CAUTION]
 > **Security Notice**: This tool is currently experimental. Do not use with production API keys or on multi-user systems, as credential handling is not yet hardened.
 
