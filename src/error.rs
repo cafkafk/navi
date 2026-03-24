@@ -16,6 +16,12 @@ pub enum NaviError {
     #[snafu(display("I/O Error: {}", error))]
     IoError { error: std::io::Error },
 
+    #[snafu(display("I/O Error while {}: {}", context, error))]
+    IoContext {
+        error: std::io::Error,
+        context: String,
+    },
+
     #[snafu(display("Nix returned invalid response: {}", output))]
     BadOutput { output: String },
 

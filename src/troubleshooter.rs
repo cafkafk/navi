@@ -20,6 +20,10 @@ where
             tracing::error!("-----");
             tracing::error!("Operation failed with error: {}", error);
 
+            for source in ErrorCompat::iter_chain(&error).skip(1) {
+                tracing::error!("Caused by: {}", source);
+            }
+
             if let Err(own_error) = troubleshoot(hive_config, &error) {
                 tracing::error!(
                     "Error occurred while trying to troubleshoot another error: {}",

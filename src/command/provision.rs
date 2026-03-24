@@ -196,15 +196,25 @@ async fn run_terranix_provisioner(
 
     // Prepare workspace
     let work_dir = std::path::Path::new(".navi").join("provision").join(name);
-    std::fs::create_dir_all(&work_dir).map_err(|e| NaviError::IoError { error: e })?;
+    std::fs::create_dir_all(&work_dir).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("creating directory {:?}", work_dir),
+    })?;
 
     // Symlink config.tf.json
     let link_path = work_dir.join("config.tf.json");
     if link_path.exists() {
-        std::fs::remove_file(&link_path).map_err(|e| NaviError::IoError { error: e })?;
+        std::fs::remove_file(&link_path).map_err(|e| NaviError::IoContext {
+            error: e,
+            context: format!("removing existing file {:?}", link_path),
+        })?;
     }
-    std::os::unix::fs::symlink(config_out_path.as_path(), &link_path)
-        .map_err(|e| NaviError::IoError { error: e })?;
+    std::os::unix::fs::symlink(config_out_path.as_path(), &link_path).map_err(|e| {
+        NaviError::IoContext {
+            error: e,
+            context: format!("symlinking {:?} -> {:?}", config_out_path, link_path),
+        }
+    })?;
 
     tracing::info!("Workspace prepared at {:?}", work_dir);
 
@@ -364,7 +374,10 @@ async fn inject_registrant_providers(
 
     let content = tokio::fs::read_to_string(&config_path)
         .await
-        .map_err(|e| NaviError::IoError { error: e })?;
+        .map_err(|e| NaviError::IoContext {
+            error: e,
+            context: format!("reading config file {:?}", config_path),
+        })?;
 
     let mut json: serde_json::Value =
         serde_json::from_str(&content).map_err(|_| NaviError::DeploymentError {
@@ -427,19 +440,25 @@ async fn inject_registrant_providers(
     if modified {
         // If config.tf.json is a symlink (it is), we must remove it before writing
         if config_path.is_symlink() || config_path.exists() {
-            std::fs::remove_file(&config_path).map_err(|e| NaviError::IoError { error: e })?;
+            std::fs::remove_file(&config_path).map_err(|e| NaviError::IoContext {
+                error: e,
+                context: format!("removing config file {:?}", config_path),
+            })?;
         }
 
         let new_content =
             serde_json::to_string_pretty(&json).expect("Failed to serialize modified config");
-        std::fs::write(&config_path, new_content).map_err(|e| NaviError::IoError { error: e })?;
+        std::fs::write(&config_path, new_content).map_err(|e| NaviError::IoContext {
+            error: e,
+            context: format!("writing config file {:?}", config_path),
+        })?;
     }
 
     Ok(())
 }
 
 async fn handle_reprovision(executor: &mut TerraformExecutor, name: &str) -> NaviResult<()> {
-    eprintln!("\n[33mWARNING: You have requested to REPROVISION.[0m");
+    eprintln!("\n\u{001b}[33mWARNING: You have requested to REPROVISION.\u{001b}[0m");
     eprintln!(
         "This will DESTROY all resources managed by provisioner '{}' and then recreate them.",
         name
@@ -451,7 +470,7 @@ async fn handle_reprovision(executor: &mut TerraformExecutor, name: &str) -> Nav
     }
 
     if let Err(e) = executor.destroy().await {
-        eprintln!("\n[33mWARNING: Terraform destroy failed.[0m");
+        eprintln!("\n\u{001b}[33mWARNING: Terraform destroy failed.\u{001b}[0m");
         eprintln!("This often occurs if resources have 'deletion_protection' enabled (e.g. Databases).");
         eprintln!("Specific error: {}", e);
         eprintln!("\nHowever, dependent resources (like VMs) are likely already destroyed.");
@@ -487,13 +506,19 @@ async fn capture_facts(
     let target_dir = Path::new(facts_dir_name).join(provisioner_name);
 
     // Create directory
-    std::fs::create_dir_all(&target_dir).map_err(|e| NaviError::IoError { error: e })?;
+    std::fs::create_dir_all(&target_dir).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("creating facts directory {:?}", target_dir),
+    })?;
 
     // Write outputs.json
     let json_path = target_dir.join("outputs.json");
     let json_content =
         serde_json::to_string_pretty(&output_json).expect("Failed to serialize outputs");
-    std::fs::write(&json_path, json_content).map_err(|e| NaviError::IoError { error: e })?;
+    std::fs::write(&json_path, json_content).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("writing facts to {:?}", json_path),
+    })?;
 
     // Write default.nix
     let nix_path = target_dir.join("default.nix");
@@ -502,7 +527,10 @@ async fn capture_facts(
 in
   builtins.mapAttrs (n: v: v.value) raw
 "#;
-    std::fs::write(&nix_path, nix_content).map_err(|e| NaviError::IoError { error: e })?;
+    std::fs::write(&nix_path, nix_content).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("writing nix facts to {:?}", nix_path),
+    })?;
 
     tracing::info!("Facts saved to {:?}", target_dir);
 
