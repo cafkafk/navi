@@ -51,18 +51,28 @@ impl TerraformExecutor {
     }
 
     async fn handle_init_error(&self, stderr: &str) -> NaviResult<bool> {
-        // 0. Check for Backend configuration changed
+        // Check for Auth errors (GCP)
+        if stderr_contains_auth_error(stderr) {
+            eprintln!("\n\x1b[33mAuthentication error detected.\x1b[0m");
+            match try_refresh_gcloud_auth().await {
+                Ok(true) => return Ok(true), // Retry init
+                Ok(false) => {}, // User declined or failed, proceed to other checks
+                Err(e) => return Err(e),
+            }
+        }
+
+        // Check for Backend configuration changed
         if stderr.contains("Backend configuration changed") {
             eprintln!("\n\x1b[33mBackend configuration change detected.\x1b[0m");
             eprintln!("The Terraform state backend has changed (e.g. bucket or key update).");
-            
+
             if confirm_action("Do you want to migrate existing state to the new configuration? (Runs 'init -migrate-state')")? {
                 tracing::info!("Running init -migrate-state...");
                 let mut cmd = Command::new(&self.tf_bin);
                 cmd.current_dir(&self.work_dir)
                    .arg("init")
                    .arg("-migrate-state");
-                
+
                 // We use passthrough to allow Terraform to ask interactive questions if needed (e.g. confirming copy)
                 cmd.passthrough().await?;
                 return Ok(true);
@@ -77,16 +87,15 @@ impl TerraformExecutor {
             }
         }
 
-        // 1. Check for specific "plugins not installed" error or other signs of provider mismatch
+        // Check for specific "plugins not installed" error or other signs of provider mismatch
         // The error might look like: "registry.opentofu.org/vitvio/porkbun: there is no package for..."
         // Or "Error loading the state: Required plugins are not installed"
-
         let missing_providers = self.extract_missing_providers(stderr);
         if missing_providers.is_empty() {
             return Ok(false);
         }
 
-        // 2. Read the current configuration to find available providers
+        // Read the current configuration to find available providers
         let configured_providers = self.get_configured_providers().await?;
         let mut recovered = false;
 
@@ -329,41 +338,41 @@ impl TerraformExecutor {
     pub async fn find_resource_address_for_node(&self, node: &str) -> NaviResult<Option<String>> {
         let mut cmd = Command::new(&self.tf_bin);
         cmd.current_dir(&self.work_dir).arg("state").arg("list");
-        
+
         // We use capture_output to get stdout as string
         let output = cmd.capture_output().await?;
-        
+
         let suffix_brackets = format!("[\"{}\"]", node);
         let suffix_dot = format!(".{}", node);
-        
+
         // Terraform resources often use underscores where Nix uses dashes.
         let node_underscored = node.replace("-", "_");
         let suffix_brackets_u = format!("[\"{}\"]", node_underscored);
         let suffix_dot_u = format!(".{}", node_underscored);
-        
+
         // Debug logging to help troubleshoot matching failures
         tracing::debug!("Looking for resource address for node '{}' in terraform state.", node);
-        tracing::debug!("Candidates suffixes: '{}', '{}', '{}', '{}'", 
+        tracing::debug!("Candidates suffixes: '{}', '{}', '{}', '{}'",
             suffix_brackets, suffix_dot, suffix_brackets_u, suffix_dot_u);
 
         for line in output.lines() {
             let line = line.trim();
-            if line.ends_with(&suffix_brackets) 
+            if line.ends_with(&suffix_brackets)
                 || line.ends_with(&suffix_dot)
                 || line.ends_with(&suffix_brackets_u)
-                || line.ends_with(&suffix_dot_u) 
+                || line.ends_with(&suffix_dot_u)
             {
                 return Ok(Some(line.to_string()));
             }
         }
-        
+
         // If not found, dump state list for debugging if we are in verbose mode
         tracing::warn!("Failed to find resource for node '{}' in state.", node);
         tracing::warn!("State list output (first 20 lines):\n{}", output.lines().take(20).collect::<Vec<_>>().join("\n"));
         if output.lines().count() > 20 {
             tracing::warn!("... ({} more lines)", output.lines().count() - 20);
         }
-        
+
         Ok(None)
     }
 
@@ -379,7 +388,7 @@ impl TerraformExecutor {
            .arg("-destroy")
            .arg(format!("-target={}", address))
            .arg("-auto-approve");
-        
+
         // We log warnings but don't fail immediately if destroy fails, as it might already be gone.
         // But generally, we want to know.
         let status = destroy_cmd.status().await?;
