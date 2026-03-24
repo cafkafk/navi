@@ -274,35 +274,45 @@ async fn run_terranix_provisioner(
     // Collect variables from registrants if enabled
     let mut extra_vars = HashMap::new();
     if let Some(registrants) = &meta.registrants {
+        // Read config to check declared variables
+        let defined_vars = get_defined_variables(&work_dir).await?;
+
         // Collect Porkbun vars
         for (account_name, account) in &registrants.porkbun {
             if account.terraform_secrets {
-                tracing::info!(
-                    "Fetching credentials for Porkbun account '{}'...",
-                    account_name
-                );
-
-                let api_key = fetch_credential_output(&account.api_key_command).await?;
-                let secret_key = fetch_credential_output(&account.secret_api_key_command).await?;
-
-                // Check for collision
-                if extra_vars.contains_key(&account.api_key_variable) {
-                    tracing::warn!(
-                        "Duplicate Terraform variable '{}' from Porkbun account '{}'. Overwriting.",
-                        account.api_key_variable,
+                if !defined_vars.contains(&account.api_key_variable) {
+                    tracing::debug!("Skipping Porkbun api_key for account '{}' (variable '{}' not defined)", account_name, account.api_key_variable);
+                } else {
+                    tracing::info!(
+                        "Fetching credentials for Porkbun account '{}'...",
                         account_name
                     );
-                }
-                extra_vars.insert(account.api_key_variable.clone(), api_key);
 
-                if extra_vars.contains_key(&account.secret_key_variable) {
-                    tracing::warn!(
-                        "Duplicate Terraform variable '{}' from Porkbun account '{}'. Overwriting.",
-                        account.secret_key_variable,
-                        account_name
-                    );
+                    let api_key = fetch_credential_output(&account.api_key_command).await?;
+                    // Check for collision
+                    if extra_vars.contains_key(&account.api_key_variable) {
+                        tracing::warn!(
+                            "Duplicate Terraform variable '{}' from Porkbun account '{}'. Overwriting.",
+                            account.api_key_variable,
+                            account_name
+                        );
+                    }
+                    extra_vars.insert(account.api_key_variable.clone(), api_key);
                 }
-                extra_vars.insert(account.secret_key_variable.clone(), secret_key);
+
+                if !defined_vars.contains(&account.secret_key_variable) {
+                     tracing::debug!("Skipping Porkbun secret_key for account '{}' (variable '{}' not defined)", account_name, account.secret_key_variable);
+                } else {
+                    let secret_key = fetch_credential_output(&account.secret_api_key_command).await?;
+                     if extra_vars.contains_key(&account.secret_key_variable) {
+                        tracing::warn!(
+                            "Duplicate Terraform variable '{}' from Porkbun account '{}'. Overwriting.",
+                            account.secret_key_variable,
+                            account_name
+                        );
+                    }
+                    extra_vars.insert(account.secret_key_variable.clone(), secret_key);
+                }
             }
         }
     }
@@ -535,4 +545,34 @@ in
     tracing::info!("Facts saved to {:?}", target_dir);
 
     Ok(())
+}
+
+async fn get_defined_variables(work_dir: &Path) -> NaviResult<HashSet<String>> {
+    let config_path = work_dir.join("config.tf.json");
+    if !config_path.exists() {
+        return Ok(HashSet::new());
+    }
+
+    let content = tokio::fs::read_to_string(&config_path)
+        .await
+        .map_err(|e| NaviError::IoContext {
+            error: e,
+            context: format!("reading config file {:?}", config_path),
+        })?;
+
+    let json: serde_json::Value =
+        serde_json::from_str(&content).map_err(|_| NaviError::DeploymentError {
+            message: "Invalid config.tf.json".into(),
+        })?;
+
+    let mut defined = HashSet::new();
+
+    // Check "variable" block
+    if let Some(vars) = json.get("variable").and_then(|v| v.as_object()) {
+        for key in vars.keys() {
+            defined.insert(key.clone());
+        }
+    }
+
+    Ok(defined)
 }
