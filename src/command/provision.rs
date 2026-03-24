@@ -203,7 +203,7 @@ async fn run_terranix_provisioner(
 
     // Symlink config.tf.json
     let link_path = work_dir.join("config.tf.json");
-    if link_path.exists() {
+    if link_path.is_symlink() || link_path.exists() {
         std::fs::remove_file(&link_path).map_err(|e| NaviError::IoContext {
             error: e,
             context: format!("removing existing file {:?}", link_path),
