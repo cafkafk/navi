@@ -221,6 +221,9 @@ pub enum Command {
     /// Unlock a disk on a remote host
     DiskUnlock(command::disk_unlock::Opts),
 
+    /// Manage persistent facts
+    Facts(command::facts::Opts),
+
     /// Provision infrastructure for nodes
     Provision(command::provision::Opts),
 

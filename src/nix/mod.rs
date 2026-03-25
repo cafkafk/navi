@@ -171,6 +171,9 @@ pub struct FactsConfig {
 
     #[serde(rename = "dirName", default = "default_facts_dir_name")]
     pub dir_name: String,
+
+    #[serde(default)]
+    pub derive: Vec<String>,
 }
 
 impl Default for FactsConfig {
@@ -178,6 +181,7 @@ impl Default for FactsConfig {
         Self {
             enable: default_true(),
             dir_name: default_facts_dir_name(),
+            derive: Vec::new(),
         }
     }
 }
@@ -236,6 +240,9 @@ pub struct ProvisionerConfig {
     pub configuration: Option<String>,
     #[serde(rename = "nixosAnywhere")]
     pub nixos_anywhere: Option<NixosAnywhereConfig>,
+
+    #[serde(default)]
+    pub derive: Vec<String>,
 }
 
 #[derive(Debug, Clone, Validate, Deserialize, Serialize)]

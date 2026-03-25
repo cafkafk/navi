@@ -198,6 +198,7 @@ pub async fn run() {
             };
             r(command::apply::run(hive, args), hive_path).await
         }
+        Command::Facts(args) => r(command::facts::run(hive, args), hive_path).await,
         Command::GenCompletions { .. } => unreachable!(),
     }
 }

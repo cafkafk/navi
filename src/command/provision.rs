@@ -47,6 +47,12 @@ pub struct Opts {
 pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
     let meta = hive.get_meta_config().await?;
 
+    // Derive facts if configured
+    if !meta.facts.derive.is_empty() {
+        tracing::info!("Deriving {} facts before provisioning...", meta.facts.derive.len());
+        crate::command::facts::derive(&hive, meta.facts.derive.clone()).await?;
+    }
+
     if opts.list {
         list_provisioners(meta.provisioners.as_ref());
         return Ok(());
@@ -71,6 +77,12 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
             .ok_or_else(|| NaviError::DeploymentError {
                 message: format!("Provisioner '{}' not found in config", name),
             })?;
+
+        // Derive provisioner-specific facts
+        if !config.derive.is_empty() {
+            tracing::info!("Deriving {} facts for provisioner '{}'...", config.derive.len(), name);
+            crate::command::facts::derive(&hive, config.derive.clone()).await?;
+        }
 
         tracing::info!("Running provisioner: {}", name);
 

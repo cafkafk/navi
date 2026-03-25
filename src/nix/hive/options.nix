@@ -527,6 +527,11 @@ rec {
                     default = "facts";
                     description = "The directory name within the repository to store facts.";
                   };
+                  derive = lib.mkOption {
+                    type = types.listOf types.str;
+                    default = [ ];
+                    description = "A list of facts to derive before provisioning.";
+                  };
                 };
               };
             };

@@ -2,6 +2,7 @@ pub mod apply;
 pub mod disk_unlock;
 pub mod eval;
 pub mod exec;
+pub mod facts;
 pub mod list;
 pub mod nix_info;
 pub mod provision;
