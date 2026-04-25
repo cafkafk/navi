@@ -326,17 +326,32 @@ async fn wait_for_connectivity(target: &str, ssh_opts: &[String], initial_passwo
             Command::new("ssh")
         };
         
-        // Pass standard SSH opts directly.
-        cmd.args(ssh_opts);
-
-        // When using password auth, force it and limit identities to avoid
-        // the "too many authentication failures" problem
+        // Pass standard SSH opts, filtering out options incompatible with sshpass
+        // when using password auth (BatchMode=yes blocks password prompts, -T
+        // suppresses TTY allocation that sshpass needs)
         if initial_password.is_some() {
+            let mut iter = ssh_opts.iter().peekable();
+            while let Some(arg) = iter.next() {
+                if arg == "-o" {
+                    if let Some(val) = iter.peek() {
+                        if val.starts_with("BatchMode=") {
+                            iter.next(); // skip the value
+                            continue;
+                        }
+                    }
+                    cmd.arg(arg);
+                } else if arg == "-T" {
+                    continue;
+                } else {
+                    cmd.arg(arg);
+                }
+            }
             cmd.args([
                 "-o", "PreferredAuthentications=password",
                 "-o", "IdentitiesOnly=yes",
-                "-o", "BatchMode=no",
             ]);
+        } else {
+            cmd.args(ssh_opts);
         }
         
         // Add robust options for checking
