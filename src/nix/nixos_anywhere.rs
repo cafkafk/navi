@@ -335,6 +335,7 @@ async fn wait_for_connectivity(target: &str, ssh_opts: &[String], initial_passwo
             cmd.args([
                 "-o", "PreferredAuthentications=password",
                 "-o", "IdentitiesOnly=yes",
+                "-o", "BatchMode=no",
             ]);
         }
         
