@@ -91,6 +91,30 @@ pub async fn run(
                 // Add strict checking options for security, unless disabled
                 let ssh_opts = ssh_helper.ssh_options();
 
+                // When using password auth via sshpass, filter out BatchMode=yes
+                // which prevents password prompts. This affects both the connectivity
+                // check and the args passed to nixos-anywhere (and its ssh-copy-id).
+                let ssh_opts = if initial_password.is_some() {
+                    let mut filtered = Vec::new();
+                    let mut iter = ssh_opts.iter();
+                    while let Some(arg) = iter.next() {
+                        if arg == "-o" {
+                            if let Some(val) = iter.next() {
+                                if val.starts_with("BatchMode=") {
+                                    continue;
+                                }
+                                filtered.push(arg.clone());
+                                filtered.push(val.clone());
+                            }
+                        } else {
+                            filtered.push(arg.clone());
+                        }
+                    }
+                    filtered
+                } else {
+                    ssh_opts
+                };
+
                 // Determine user to connect as
                 let node_target_user = targets
                     .iter()
@@ -326,32 +350,16 @@ async fn wait_for_connectivity(target: &str, ssh_opts: &[String], initial_passwo
             Command::new("ssh")
         };
         
-        // Pass standard SSH opts, filtering out options incompatible with sshpass
-        // when using password auth (BatchMode=yes blocks password prompts, -T
-        // suppresses TTY allocation that sshpass needs)
+        // Pass standard SSH opts (already filtered if initial_password is set)
+        cmd.args(ssh_opts.iter());
+
+        // When using password auth, force it and limit identities to avoid
+        // the "too many authentication failures" problem
         if initial_password.is_some() {
-            let mut iter = ssh_opts.iter().peekable();
-            while let Some(arg) = iter.next() {
-                if arg == "-o" {
-                    if let Some(val) = iter.peek() {
-                        if val.starts_with("BatchMode=") {
-                            iter.next(); // skip the value
-                            continue;
-                        }
-                    }
-                    cmd.arg(arg);
-                } else if arg == "-T" {
-                    continue;
-                } else {
-                    cmd.arg(arg);
-                }
-            }
             cmd.args([
                 "-o", "PreferredAuthentications=password",
                 "-o", "IdentitiesOnly=yes",
             ]);
-        } else {
-            cmd.args(ssh_opts);
         }
         
         // Add robust options for checking
