@@ -20,7 +20,7 @@ pub struct Opts {
     pub list: bool,
 
     /// Explicitly select a provisioner to run
-    #[arg(conflicts_with = "on", conflicts_with = "exclude")]
+    #[arg(conflicts_with = "on")]
     pub provisioner: Option<String>,
 
     /// Destroy and recreate the infrastructure
@@ -38,6 +38,10 @@ pub struct Opts {
     /// Skip the OS installation step (nixos-anywhere), only provision infrastructure and update facts
     #[arg(long)]
     pub skip_install: bool,
+
+    /// IP address for bare-metal provisioning (skips interactive prompt)
+    #[arg(long)]
+    pub ip: Option<String>,
 
     #[command(flatten)]
     pub node_filter: NodeFilterOpts,
@@ -147,6 +151,9 @@ async fn run_provisioner(
         ProvisionerType::FlakeApp => run_flake_app_provisioner(config).await,
         ProvisionerType::Terranix => {
             run_terranix_provisioner(hive, name, config, targets, opts, meta).await
+        }
+        ProvisionerType::BareMetal => {
+            run_bare_metal_provisioner(hive, name, config, targets, opts, meta).await
         }
     }
 }
@@ -370,6 +377,193 @@ async fn run_terranix_provisioner(
     } else {
         tracing::info!("Skipping install step as requested.");
     }
+
+    Ok(())
+}
+
+/// Bare-metal provisioner: resolves node IPs interactively or via `--ip`,
+/// writes them as facts, then optionally runs nixos-anywhere.
+async fn run_bare_metal_provisioner(
+    hive: &Hive,
+    name: &str,
+    config: &ProvisionerConfig,
+    targets: &HashMap<NodeName, TargetNode>,
+    opts: &Opts,
+    meta: &MetaConfig,
+) -> NaviResult<()> {
+    let facts_dir = Path::new(&meta.facts.dir_name).join(name);
+
+    // Load existing facts if present
+    let mut existing_outputs: serde_json::Value = if facts_dir.join("outputs.json").exists() {
+        let content = tokio::fs::read_to_string(facts_dir.join("outputs.json"))
+            .await
+            .map_err(|e| NaviError::IoContext {
+                error: e,
+                context: format!("reading existing facts from {:?}", facts_dir),
+            })?;
+        serde_json::from_str(&content).unwrap_or_else(|_| serde_json::json!({}))
+    } else {
+        serde_json::json!({})
+    };
+
+    // Determine relevant nodes for this provisioner
+    let relevant_nodes: Vec<(&NodeName, &TargetNode)> = targets
+        .iter()
+        .filter(|(_, target)| target.config.provisioner.as_deref() == Some(name))
+        .collect();
+
+    if relevant_nodes.is_empty() {
+        tracing::warn!("No nodes assigned to bare-metal provisioner '{}'.", name);
+        return Ok(());
+    }
+
+    // Resolve IP for each node
+    for (node_name, _target) in &relevant_nodes {
+        let ip_key = format!("{}_ip", node_name.as_str().replace('-', "_"));
+
+        // Check if IP already exists in facts
+        let existing_ip = existing_outputs
+            .get(&ip_key)
+            .and_then(|v| v.get("value"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+
+        let ip = if opts.reprovision || existing_ip.is_none() {
+            // Need to get the IP: from --ip flag or interactively
+            if let Some(ip) = &opts.ip {
+                tracing::info!(
+                    "[bare-metal] Using provided IP for {}: {}",
+                    node_name.as_str(),
+                    ip
+                );
+                ip.clone()
+            } else if let Some(existing) = &existing_ip {
+                if !opts.reprovision {
+                    tracing::info!(
+                        "[bare-metal] Using existing IP for {}: {}",
+                        node_name.as_str(),
+                        existing
+                    );
+                    existing.clone()
+                } else {
+                    // Reprovision: prompt with existing as hint
+                    prompt_for_ip(node_name.as_str(), Some(existing))?
+                }
+            } else {
+                // No existing IP, no flag: prompt
+                prompt_for_ip(node_name.as_str(), None)?
+            }
+        } else {
+            let ip = existing_ip.unwrap();
+            tracing::info!(
+                "[bare-metal] Using existing IP for {}: {}",
+                node_name.as_str(),
+                ip
+            );
+            ip
+        };
+
+        // Write/update the fact for this node
+        existing_outputs[&ip_key] = serde_json::json!({
+            "sensitive": false,
+            "type": "string",
+            "value": ip
+        });
+    }
+
+    // Persist facts
+    if meta.facts.enable {
+        write_bare_metal_facts(&facts_dir, &existing_outputs)?;
+        tracing::info!("Facts saved to {:?}", facts_dir);
+    }
+
+    // Handle NixOS Anywhere
+    if !opts.skip_install {
+        if let Some(na_config) = &config.nixos_anywhere {
+            if na_config.enable {
+                tracing::info!("Running nixos-anywhere for bare-metal nodes...");
+
+                let node_names: Vec<&str> = relevant_nodes
+                    .iter()
+                    .map(|(n, _)| n.as_str())
+                    .collect();
+
+                crate::nix::nixos_anywhere::run(
+                    hive,
+                    targets,
+                    na_config,
+                    &existing_outputs,
+                    opts.unlock,
+                    Some(node_names),
+                )
+                .await?;
+            }
+        }
+    } else {
+        tracing::info!("Skipping install step as requested.");
+    }
+
+    Ok(())
+}
+
+/// Prompts the user for an IP address interactively.
+fn prompt_for_ip(node_name: &str, existing: Option<&str>) -> NaviResult<String> {
+    if let Some(existing) = existing {
+        eprint!("Enter IP address for {} [{}]: ", node_name, existing);
+    } else {
+        eprint!("Enter IP address for {}: ", node_name);
+    }
+
+    let mut input = String::new();
+    std::io::stdin()
+        .read_line(&mut input)
+        .map_err(|e| NaviError::IoError { error: e })?;
+
+    let trimmed = input.trim();
+    if trimmed.is_empty() {
+        if let Some(existing) = existing {
+            Ok(existing.to_string())
+        } else {
+            Err(NaviError::DeploymentError {
+                message: format!("No IP address provided for node '{}'", node_name),
+            })
+        }
+    } else {
+        Ok(trimmed.to_string())
+    }
+}
+
+/// Writes bare-metal facts (IP mappings) in the same format as Terraform outputs.
+pub fn write_bare_metal_facts(
+    facts_dir: &Path,
+    outputs: &serde_json::Value,
+) -> NaviResult<()> {
+    // Create directory
+    std::fs::create_dir_all(facts_dir).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("creating facts directory {:?}", facts_dir),
+    })?;
+
+    // Write outputs.json
+    let json_path = facts_dir.join("outputs.json");
+    let json_content =
+        serde_json::to_string_pretty(outputs).expect("Failed to serialize outputs");
+    std::fs::write(&json_path, json_content).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("writing facts to {:?}", json_path),
+    })?;
+
+    // Write default.nix (same format as Terraform facts)
+    let nix_path = facts_dir.join("default.nix");
+    let nix_content = r#"let
+  raw = builtins.fromJSON (builtins.readFile ./outputs.json);
+in
+  builtins.mapAttrs (n: v: v.value) raw
+"#;
+    std::fs::write(&nix_path, nix_content).map_err(|e| NaviError::IoContext {
+        error: e,
+        context: format!("writing nix facts to {:?}", nix_path),
+    })?;
 
     Ok(())
 }

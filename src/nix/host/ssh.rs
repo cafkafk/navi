@@ -43,6 +43,12 @@ pub struct Ssh {
 
     provider: Provider,
 
+    /// Force connections through physical interfaces, bypassing overlay networks.
+    force_hw_link: bool,
+
+    /// Explicit list of allowed interfaces for hw-link binding.
+    hw_link_interfaces: Option<Vec<String>>,
+
     job: Option<JobHandle>,
 }
 
@@ -390,6 +396,8 @@ impl Ssh {
             extra_ssh_options: Vec::new(),
             use_nix3_copy: false,
             provider: Provider::Ssh,
+            force_hw_link: false,
+            hw_link_interfaces: None,
             job: None,
         }
     }
@@ -426,8 +434,90 @@ impl Ssh {
         self.use_nix3_copy = enable;
     }
 
+    pub fn set_force_hw_link(&mut self, enable: bool) {
+        self.force_hw_link = enable;
+    }
+
+    pub fn set_hw_link_interfaces(&mut self, interfaces: Option<Vec<String>>) {
+        self.hw_link_interfaces = interfaces;
+    }
+
     pub fn upcast(self) -> Box<dyn Host> {
         Box::new(self)
+    }
+
+    /// Applies hardware-link interface binding to this SSH host's options.
+    ///
+    /// Detects an appropriate physical interface (e.g. `enp*`, `wlp*`) and adds
+    /// a `ProxyCommand` using `socat` with `bindtodevice` to bypass overlay
+    /// networks like Tailscale.
+    ///
+    /// If `explicit_interfaces` is provided, only those interface prefixes are
+    /// allowed. Otherwise, the default prefixes `enp` and `wlp` are used.
+    pub fn apply_hw_link_binding(&mut self, explicit_interfaces: Option<&[String]>) {
+        let target_host = self.host.clone();
+
+        let allowed_patterns: Vec<String> = if let Some(explicit) = explicit_interfaces {
+            explicit.to_vec()
+        } else {
+            vec!["enp".to_string(), "wlp".to_string()]
+        };
+
+        let matches =
+            |iface: &str| -> bool { allowed_patterns.iter().any(|p| iface.starts_with(p)) };
+
+        // Try route lookup
+        let best_interface = std::process::Command::new("ip")
+            .args(&["route", "get", &target_host, "table", "main"])
+            .output()
+            .ok()
+            .and_then(|output| {
+                let s = String::from_utf8_lossy(&output.stdout);
+                s.split_whitespace()
+                    .skip_while(|&part| part != "dev")
+                    .nth(1)
+                    .map(|s| s.to_string())
+            });
+
+        let selected_interface = if let Some(iface) = best_interface.filter(|i| matches(i)) {
+            Some(iface)
+        } else {
+            tracing::warn!("Route lookup failed or returned disallowed interface. Scanning available interfaces...");
+            std::process::Command::new("ip")
+                .args(&["-o", "link", "show", "up"])
+                .output()
+                .ok()
+                .and_then(|output| {
+                    String::from_utf8_lossy(&output.stdout)
+                        .lines()
+                        .find_map(|line| {
+                            let parts: Vec<&str> = line.split_whitespace().collect();
+                            if parts.len() >= 2 {
+                                let name = parts[1].trim_end_matches(':');
+                                if matches(name) {
+                                    return Some(name.to_string());
+                                }
+                            }
+                            None
+                        })
+                })
+        };
+
+        if let Some(iface) = selected_interface {
+            tracing::info!("Binding connection to physical interface: {}", iface);
+            self.extra_ssh_options.push("-o".to_string());
+            self.extra_ssh_options.push(format!(
+                "ProxyCommand=sudo socat - TCP:%h:%p,bindtodevice={}",
+                iface
+            ));
+        } else {
+            tracing::error!(
+                "Failed to find allowed physical interface! Blocking connection."
+            );
+            self.extra_ssh_options.push("-o".to_string());
+            self.extra_ssh_options
+                .push("ProxyCommand=false".to_string());
+        }
     }
 
     /// Prepares this host instance for connecting to initrd (e.g. for unlocking).
@@ -446,69 +536,7 @@ impl Ssh {
 
         // Handle interface binding
         if config.force_hw_link || config.interfaces.is_some() {
-            let target_host = self.host.clone();
-
-            let allowed_patterns = if let Some(explicit) = &config.interfaces {
-                explicit.clone()
-            } else {
-                vec!["enp".to_string(), "wlp".to_string()]
-            };
-
-            let matches =
-                |iface: &str| -> bool { allowed_patterns.iter().any(|p| iface.starts_with(p)) };
-
-            // Try route lookup
-            let best_interface = std::process::Command::new("ip")
-                .args(&["route", "get", &target_host, "table", "main"])
-                .output()
-                .ok()
-                .and_then(|output| {
-                    let s = String::from_utf8_lossy(&output.stdout);
-                    s.split_whitespace()
-                        .skip_while(|&part| part != "dev")
-                        .nth(1)
-                        .map(|s| s.to_string())
-                });
-
-            let selected_interface = if let Some(iface) = best_interface.filter(|i| matches(i)) {
-                Some(iface)
-            } else {
-                tracing::warn!("Route lookup failed or returned disallowed interface. Scanning available interfaces...");
-                std::process::Command::new("ip")
-                    .args(&["-o", "link", "show", "up"])
-                    .output()
-                    .ok()
-                    .and_then(|output| {
-                        String::from_utf8_lossy(&output.stdout)
-                            .lines()
-                            .find_map(|line| {
-                                let parts: Vec<&str> = line.split_whitespace().collect();
-                                if parts.len() >= 2 {
-                                    let name = parts[1].trim_end_matches(':');
-                                    if matches(name) {
-                                        return Some(name.to_string());
-                                    }
-                                }
-                                None
-                            })
-                    })
-            };
-
-            if let Some(iface) = selected_interface {
-                tracing::info!("Binding unlock connection to interface: {}", iface);
-                self.extra_ssh_options.push("-o".to_string());
-                self.extra_ssh_options.push(format!(
-                    "ProxyCommand=sudo socat - TCP:%h:%p,bindtodevice={}",
-                    iface
-                ));
-            } else {
-                tracing::error!(
-                    "Failed to find allowed interface for unlock! Blocking connection."
-                );
-                self.extra_ssh_options.push("-o".to_string());
-                self.extra_ssh_options
-                    .push("ProxyCommand=false".to_string());
-            }
+            self.apply_hw_link_binding(config.interfaces.as_deref());
         }
 
         self.extra_ssh_options.extend(config.ssh_options.clone());
@@ -789,6 +817,22 @@ impl Ssh {
         // TODO: Allow configuation of SSH parameters
 
         let mut options = self.extra_ssh_options.clone();
+
+        // Apply hardware-link binding if configured and not already set
+        // (configure_for_initrd handles its own binding, so we check for ProxyCommand)
+        if self.force_hw_link {
+            let already_has_proxy = options.windows(2).any(|w| {
+                w[0] == "-o" && w[1].starts_with("ProxyCommand")
+            });
+            if !already_has_proxy {
+                let mut binding_host = self.clone();
+                binding_host.force_hw_link = false; // prevent recursion
+                binding_host.extra_ssh_options.clear();
+                binding_host.apply_hw_link_binding(self.hw_link_interfaces.as_deref());
+                options.extend(binding_host.extra_ssh_options);
+            }
+        }
+
         options.extend(
             [
                 "-o",

@@ -111,14 +111,17 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
             }
         })?;
 
-        // We only care about Terranix/Terraform provisioners for IP lookup
-        if prov_config.kind != crate::nix::ProvisionerType::Terranix {
-            tracing::info!(
-                "Skipping provisioner '{}' (type {:?}) as it is not Terraform-based.",
-                prov_name,
-                prov_config.kind
-            );
-            continue;
+        // Only Terranix and BareMetal provisioners support installation
+        match prov_config.kind {
+            crate::nix::ProvisionerType::Terranix | crate::nix::ProvisionerType::BareMetal => {}
+            _ => {
+                tracing::info!(
+                    "Skipping provisioner '{}' (type {:?}) — installation not supported.",
+                    prov_name,
+                    prov_config.kind
+                );
+                continue;
+            }
         }
 
         // Check if nixos-anywhere is enabled for this provisioner
@@ -147,8 +150,8 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
 
         let facts_dir = Path::new(&meta.facts.dir_name).join(&prov_name);
         
-        // 3a. Handle Reinstall Logic (Infrastructure Recreation)
-        if opts.reinstall {
+        // 3a. Handle Reinstall Logic (Infrastructure Recreation) — Terranix only
+        if opts.reinstall && prov_config.kind == crate::nix::ProvisionerType::Terranix {
             tracing::info!("Reinstall requested. Checking for resources to destroy and recreate...");
             
             // Reconstruct the workspace path
@@ -162,7 +165,7 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
                         tracing::info!("Found resource for node {}: {}", node_name, addr);
                         tracing::warn!("RECREATING infrastructure for node {}", node_name);
                         
-                        eprintln!("\n[33mTargeting Terraform resource: {}[0m", addr);
+                        eprintln!("\n[33mTargeting Terraform resource: {}[0m", addr);
                         if confirm_action(&format!("Are you sure you want to destroy and recreate this resource for node '{}'?", node_name))? {
                             match executor.replace_resource(&addr).await {
                                 Ok(_) => {
@@ -190,6 +193,8 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
             } else {
                 tracing::warn!("Provisioner workspace not found at {:?}. Cannot perform reinstall actions.", work_dir);
             }
+        } else if opts.reinstall && prov_config.kind == crate::nix::ProvisionerType::BareMetal {
+            tracing::info!("Reinstall requested for bare-metal provisioner '{}'. No infrastructure to recreate.", prov_name);
         }
 
         // 4. Load Outputs (Cache or Live)

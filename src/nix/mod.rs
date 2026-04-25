@@ -118,6 +118,11 @@ pub struct NodeConfig {
     #[serde(rename = "provisioner")]
     pub provisioner: Option<String>,
 
+    /// Force SSH connections through physical network interfaces, bypassing
+    /// overlay networks like Tailscale.
+    #[serde(rename = "forceHwLink", default)]
+    pub force_hw_link: bool,
+
     #[validate(custom(function = "validate_keys"))]
     #[serde(default)]
     pub keys: HashMap<String, Key>,
@@ -138,6 +143,7 @@ impl Default for NodeConfig {
             privilege_escalation_command: Vec::new(),
             extra_ssh_options: Vec::new(),
             provisioner: None,
+            force_hw_link: false,
             keys: HashMap::new(),
         }
     }
@@ -326,6 +332,7 @@ pub enum ProvisionerType {
     Command,
     FlakeApp,
     Terranix,
+    BareMetal,
 }
 
 /// Nix CLI flags.
@@ -454,6 +461,7 @@ impl NodeConfig {
             host.set_privilege_escalation_command(self.privilege_escalation_command.clone());
             host.set_extra_ssh_options(self.extra_ssh_options.clone());
             host.set_provider(self.get_provider());
+            host.set_force_hw_link(self.force_hw_link);
 
             if let Some(target_port) = self.target_port {
                 host.set_port(target_port);
