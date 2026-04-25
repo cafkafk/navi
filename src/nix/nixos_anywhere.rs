@@ -348,6 +348,8 @@ async fn wait_for_connectivity(target: &str, ssh_opts: &[String], initial_passwo
             target, "exit", "0"
         ]);
 
+        tracing::debug!("SSH connectivity check: {:?}", cmd.as_std());
+
         // We capture output to check for specific IAP errors
         let mut exec = CommandExecution::new(cmd);
         exec.set_quiet(true);
