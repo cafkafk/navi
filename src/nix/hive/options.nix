@@ -242,6 +242,22 @@ rec {
             type = types.nullOr types.str;
             default = null;
           };
+          forceHwLink = lib.mkOption {
+            description = ''
+              Force SSH connections through physical network interfaces (e.g.
+              enp*, wlp*), bypassing overlay networks such as Tailscale.
+
+              When enabled, Navi will detect an appropriate physical interface
+              and route SSH traffic through it using socat's bindtodevice.
+              This is useful for bare-metal hosts on a LAN that should be
+              reached directly rather than through a VPN tunnel.
+
+              Note: This setting applies to regular deployment connections.
+              For initrd/unlock connections, use deployment.unlock.forceHwLink.
+            '';
+            type = types.bool;
+            default = false;
+          };
           providers = lib.mkOption {
             description = ''
               Cloud provider settings.

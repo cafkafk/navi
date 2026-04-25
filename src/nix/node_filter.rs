@@ -247,6 +247,7 @@ mod tests {
             privilege_escalation_command: vec![],
             extra_ssh_options: vec![],
             provisioner: None,
+            force_hw_link: false,
             keys: HashMap::new(),
             providers: Default::default(),
             unlock: Default::default(),
