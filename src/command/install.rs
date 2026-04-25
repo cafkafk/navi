@@ -233,6 +233,7 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
             &outputs_json,
             opts.unlock,
             Some(final_nodes),
+            None,
         )
         .await?;
     }

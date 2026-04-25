@@ -43,6 +43,11 @@ pub struct Opts {
     #[arg(long)]
     pub ip: Option<String>,
 
+    /// Password for initial SSH connection to the installer (e.g. for bare-metal
+    /// hosts that haven't been keyed yet). Passed to nixos-anywhere via --env-password.
+    #[arg(long)]
+    pub initial_password: Option<String>,
+
     #[command(flatten)]
     pub node_filter: NodeFilterOpts,
 }
@@ -370,6 +375,7 @@ async fn run_terranix_provisioner(
                     &output_json,
                     opts.unlock,
                     Some(relevant_nodes),
+                    None,
                 )
                 .await?;
             }
@@ -495,6 +501,7 @@ async fn run_bare_metal_provisioner(
                     &existing_outputs,
                     opts.unlock,
                     Some(node_names),
+                    opts.initial_password.as_deref(),
                 )
                 .await?;
             }
