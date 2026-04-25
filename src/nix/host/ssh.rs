@@ -491,6 +491,11 @@ impl Ssh {
                     String::from_utf8_lossy(&output.stdout)
                         .lines()
                         .find_map(|line| {
+                            // Only consider interfaces with LOWER_UP (physical link present),
+                            // not just administratively UP (which includes wifi with no carrier)
+                            if !line.contains("LOWER_UP") {
+                                return None;
+                            }
                             let parts: Vec<&str> = line.split_whitespace().collect();
                             if parts.len() >= 2 {
                                 let name = parts[1].trim_end_matches(':');
