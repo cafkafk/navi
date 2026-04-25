@@ -6,6 +6,8 @@
   nix-eval-jobs,
   makeBinaryWrapper,
   nixos-anywhere,
+  sshpass,
+  socat,
 }:
 
 let
@@ -66,7 +68,7 @@ in craneLib.buildPackage (commonArgs // {
     ''}
 
     wrapProgram $out/bin/navi \
-      --prefix PATH : ${lib.makeBinPath [ nixos-anywhere ]}
+      --prefix PATH : ${lib.makeBinPath [ nixos-anywhere sshpass socat ]}
   '';
 
   passthru = {

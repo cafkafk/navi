@@ -20,6 +20,8 @@
       python3Packages.flake8
 
       nix
+      sshpass
+      socat
     ];
   };
 };
