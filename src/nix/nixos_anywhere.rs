@@ -20,6 +20,7 @@ pub async fn run(
     tf_outputs: &serde_json::Value,
     unlock_after_install: bool,
     subset_nodes: Option<Vec<&str>>,
+    initial_password: Option<&str>,
 ) -> NaviResult<()> {
     // Determine which nodes to process. If subset_nodes is provided, use it, otherwise use all targets.
     // However, we still filter by the provisioner in the caller usually, but here we just iterate
@@ -106,7 +107,7 @@ pub async fn run(
                 
                 // Wait for connectivity before launching nixos-anywhere
                 // This is crucial for IAP tunnels which take time to establish/propagate
-                if let Err(e) = wait_for_connectivity(&target_str, &ssh_opts).await {
+                if let Err(e) = wait_for_connectivity(&target_str, &ssh_opts, initial_password).await {
                     tracing::error!("Skipping node {} due to connectivity/auth issues: {}", node, e);
                     failed.push((node.to_string(), e.to_string()));
                     continue;
@@ -122,6 +123,12 @@ pub async fn run(
 
                 let mut na_cmd = Command::new("nixos-anywhere");
                 na_cmd.arg("--flake").arg(&flake_ref).arg(&target_str);
+
+                // If an initial password is provided, use sshpass via --env-password
+                if let Some(password) = initial_password {
+                    na_cmd.env("SSHPASS", password);
+                    na_cmd.arg("--env-password");
+                }
 
                 if na_config.download_kexec_locally {
                     match get_node_system(hive, node).await {
@@ -282,7 +289,7 @@ fn populate_ssh_args(cmd: &mut Command, ssh_opts: &[String]) {
     }
 }
 
-async fn wait_for_connectivity(target: &str, ssh_opts: &[String]) -> NaviResult<()> {
+async fn wait_for_connectivity(target: &str, ssh_opts: &[String], initial_password: Option<&str>) -> NaviResult<()> {
     tracing::info!("Waiting for connectivity to {}...", target);
     
     // Increase timeout to 10 minutes (600s) to accommodate slow IAP tunnel propagation
@@ -309,10 +316,27 @@ async fn wait_for_connectivity(target: &str, ssh_opts: &[String]) -> NaviResult<
             });
         }
 
-        let mut cmd = Command::new("ssh");
+        // If initial_password is set, use sshpass for the connectivity check
+        let mut cmd = if let Some(password) = initial_password {
+            let mut c = Command::new("sshpass");
+            c.env("SSHPASS", password);
+            c.arg("-e").arg("ssh");
+            c
+        } else {
+            Command::new("ssh")
+        };
         
         // Pass standard SSH opts directly.
         cmd.args(ssh_opts);
+
+        // When using password auth, force it and limit identities to avoid
+        // the "too many authentication failures" problem
+        if initial_password.is_some() {
+            cmd.args([
+                "-o", "PreferredAuthentications=password",
+                "-o", "IdentitiesOnly=yes",
+            ]);
+        }
         
         // Add robust options for checking
         // We use exit 0 so it's a no-op on the server side
