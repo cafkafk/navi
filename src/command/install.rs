@@ -234,6 +234,7 @@ pub async fn run(hive: Hive, opts: Opts) -> NaviResult<()> {
             opts.unlock,
             Some(final_nodes),
             None,
+            Some(&prov_config.kind),
         )
         .await?;
     }

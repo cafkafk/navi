@@ -9,7 +9,8 @@ use tokio::time::sleep;
 
 use crate::error::{NaviError, NaviResult};
 use crate::nix::{
-    deployment::TargetNode, hive::Hive, NixosAnywhereConfig, NodeName, Ssh,
+    deployment::TargetNode, hive::Hive, CopyHostKeys, NixosAnywhereConfig,
+    NodeName, ProvisionerType, Ssh,
 };
 use crate::util::{CommandExt, CommandExecution};
 
@@ -21,6 +22,7 @@ pub async fn run(
     unlock_after_install: bool,
     subset_nodes: Option<Vec<&str>>,
     initial_password: Option<&str>,
+    provisioner_type: Option<&ProvisionerType>,
 ) -> NaviResult<()> {
     // Determine which nodes to process. If subset_nodes is provided, use it, otherwise use all targets.
     // However, we still filter by the provisioner in the caller usually, but here we just iterate
@@ -152,6 +154,20 @@ pub async fn run(
                 if let Some(password) = initial_password {
                     na_cmd.env("SSHPASS", password);
                     na_cmd.arg("--env-password");
+                }
+
+                // Resolve --copy-host-keys: Auto enables it for bare-metal
+                // provisioners where the target won't have host keys yet
+                let should_copy_host_keys = match &na_config.copy_host_keys {
+                    CopyHostKeys::Always => true,
+                    CopyHostKeys::Never => false,
+                    CopyHostKeys::Auto => {
+                        provisioner_type == Some(&ProvisionerType::BareMetal)
+                    }
+                };
+                if should_copy_host_keys {
+                    tracing::info!("Copying host keys from installer to target system");
+                    na_cmd.arg("--copy-host-keys");
                 }
 
                 if na_config.download_kexec_locally {
