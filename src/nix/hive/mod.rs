@@ -7,7 +7,7 @@ mod tests;
 
 pub use path::HivePath;
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::convert::AsRef;
 use std::path::{Path, PathBuf};
 
@@ -213,6 +213,26 @@ impl Hive {
             self.deployment_info_selected(&selected_nodes).await?
         };
 
+        // Pre-resolve which provisioner names are bare-metal type, so we can
+        // mark their SSH hosts to strip ProxyCommand from nix copy invocations
+        let bare_metal_provisioners: HashSet<&str> = self
+            .get_meta_config()
+            .await
+            .ok()
+            .and_then(|meta| meta.provisioners.as_ref())
+            .map(|provs| {
+                provs
+                    .iter()
+                    .filter(|(_, c)| c.kind == crate::nix::ProvisionerType::BareMetal)
+                    .map(|(name, _)| name.as_str())
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if !bare_metal_provisioners.is_empty() {
+            tracing::debug!("Bare-metal provisioners: {:?}", bare_metal_provisioners);
+        }
+
         let mut targets = HashMap::new();
         let mut n_ssh = 0;
         for node in selected_nodes.into_iter() {
@@ -227,6 +247,20 @@ impl Hive {
 
                 if self.is_flake() {
                     host.set_use_nix3_copy(true);
+                }
+
+                let is_bare_metal = config
+                    .provisioner
+                    .as_deref()
+                    .map_or(false, |p| bare_metal_provisioners.contains(p));
+
+                if is_bare_metal {
+                    tracing::debug!(
+                        "Marking {} as bare-metal (provisioner: {:?})",
+                        node.as_str(),
+                        config.provisioner,
+                    );
+                    host.set_is_bare_metal(true);
                 }
 
                 host.upcast()

@@ -6,6 +6,7 @@ use std::process::Stdio;
 use std::time::Duration;
 
 use async_trait::async_trait;
+use regex::Regex;
 use tokio::process::Command;
 use tokio::time::sleep;
 
@@ -48,6 +49,11 @@ pub struct Ssh {
 
     /// Explicit list of allowed interfaces for hw-link binding.
     hw_link_interfaces: Option<Vec<String>>,
+
+    /// Whether this host is managed by a bare-metal provisioner.
+    /// When true, ProxyCommand options are stripped from nix copy invocations
+    /// to avoid NIX_SSHOPTS quoting issues with socat/bindtodevice.
+    is_bare_metal: bool,
 
     job: Option<JobHandle>,
 }
@@ -398,6 +404,7 @@ impl Ssh {
             provider: Provider::Ssh,
             force_hw_link: false,
             hw_link_interfaces: None,
+            is_bare_metal: false,
             job: None,
         }
     }
@@ -440,6 +447,10 @@ impl Ssh {
 
     pub fn set_hw_link_interfaces(&mut self, interfaces: Option<Vec<String>>) {
         self.hw_link_interfaces = interfaces;
+    }
+
+    pub fn set_is_bare_metal(&mut self, enable: bool) {
+        self.is_bare_metal = enable;
     }
 
     pub fn upcast(self) -> Box<dyn Host> {
@@ -738,6 +749,23 @@ impl Ssh {
             .collect::<Vec<_>>()
             .join(" ");
 
+        // For bare-metal provisioned hosts, strip ProxyCommand options from
+        // NIX_SSHOPTS. The socat/bindtodevice ProxyCommand used for hw-link
+        // binding breaks nix copy due to quoting issues in NIX_SSHOPTS parsing.
+        // Direct ssh() calls are unaffected as they pass args directly.
+        let ssh_options_str = if self.is_bare_metal {
+            let re = Regex::new(r"-o\s+'?ProxyCommand=[^']*'?").unwrap();
+            let cleaned = re.replace_all(&ssh_options_str, "").trim().to_string();
+            tracing::debug!("Bare-metal host: stripped ProxyCommand from NIX_SSHOPTS");
+            tracing::debug!("NIX_SSHOPTS before: {}", ssh_options_str);
+            tracing::debug!("NIX_SSHOPTS after:  {}", cleaned);
+            cleaned
+        } else {
+            ssh_options_str
+        };
+
+        tracing::debug!("nix_copy_closure: is_bare_metal={}, NIX_SSHOPTS={}", self.is_bare_metal, ssh_options_str);
+
         // We use nix3_copy significantly for ProxyCommand support because `nix` (binary)
         // parses NIX_SSHOPTS properly with quotes, whereas `nix-copy-closure` (script)
         // is very fragile with spaces in env vars.
@@ -823,9 +851,11 @@ impl Ssh {
 
         let mut options = self.extra_ssh_options.clone();
 
-        // Apply hardware-link binding if configured and not already set
+        // Apply hardware-link binding if configured and not already set.
+        // Skip for bare-metal hosts outside install/provision context — they
+        // are reachable via normal networking (e.g. Tailscale) post-install.
         // (configure_for_initrd handles its own binding, so we check for ProxyCommand)
-        if self.force_hw_link {
+        if self.force_hw_link && !self.is_bare_metal {
             let already_has_proxy = options.windows(2).any(|w| {
                 w[0] == "-o" && w[1].starts_with("ProxyCommand")
             });
