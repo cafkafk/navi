@@ -376,6 +376,7 @@ async fn run_terranix_provisioner(
                     opts.unlock,
                     Some(relevant_nodes),
                     None,
+                    Some(&crate::nix::ProvisionerType::Terranix),
                 )
                 .await?;
             }
@@ -502,6 +503,7 @@ async fn run_bare_metal_provisioner(
                     opts.unlock,
                     Some(node_names),
                     opts.initial_password.as_deref(),
+                    Some(&crate::nix::ProvisionerType::BareMetal),
                 )
                 .await?;
             }

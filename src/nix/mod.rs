@@ -251,6 +251,24 @@ pub struct ProvisionerConfig {
     pub derive: Vec<String>,
 }
 
+/// Controls whether nixos-anywhere copies SSH host keys from the installer
+/// to the target system. `Auto` enables it for bare-metal provisioners
+/// (where host keys won't exist on the fresh install), `Always` forces it
+/// on, and `Never` disables it.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum CopyHostKeys {
+    Auto,
+    Always,
+    Never,
+}
+
+impl Default for CopyHostKeys {
+    fn default() -> Self {
+        CopyHostKeys::Auto
+    }
+}
+
 #[derive(Debug, Clone, Validate, Deserialize, Serialize)]
 pub struct NixosAnywhereConfig {
     pub enable: bool,
@@ -264,6 +282,8 @@ pub struct NixosAnywhereConfig {
     pub download_kexec_locally: bool,
     #[serde(rename = "kexecUrlTemplate", default)]
     pub kexec_url_template: Option<String>,
+    #[serde(rename = "copyHostKeys", default)]
+    pub copy_host_keys: CopyHostKeys,
 }
 
 #[derive(Debug, Clone, Validate, Deserialize, Serialize)]
