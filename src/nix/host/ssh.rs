@@ -335,11 +335,14 @@ impl Host for Ssh {
 
                     initrd_host.configure_for_initrd(unlock_config);
 
-                    // Set aggressive timeout for initrd probe since it might not be up yet
+                    // Timeout for initrd unlock SSH. Must be long enough to cover both the TCP
+                    // connect AND the SSH banner exchange on a slow-booting initrd. 2s is too tight
+                    // for hosts with Mellanox NICs / SAS controllers / large initrds; 8s is
+                    // comfortable while still failing fast when the box really isn't up yet.
                     initrd_host.extra_ssh_options.push("-o".to_string());
                     initrd_host
                         .extra_ssh_options
-                        .push("ConnectTimeout=2".to_string());
+                        .push("ConnectTimeout=8".to_string());
 
                     initrd_host.extra_ssh_options.push("-o".to_string());
                     initrd_host
