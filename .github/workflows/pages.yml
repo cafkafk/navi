@@ -1,0 +1,55 @@
+name: 'Pages'
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+# Allow the workflow to deploy to GitHub Pages.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment, and let an in-progress run finish so a
+# half-published site is never left behind.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build manual
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Nix
+        uses: cachix/install-nix-action@v26
+      - name: Restore and cache Nix store
+        uses: nix-community/cache-nix-action@v3
+        with:
+          primary-key: pages-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          restore-keys: |
+            pages-${{ runner.os }}-
+      - name: Build the manual
+        # .#manual regenerates the command-line reference from the navi binary
+        # before running mdBook, so the published site cannot drift from the CLI.
+        run: |
+          nix build -L .#manual
+          cp -rL result public
+          chmod -R u+w public
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+  deploy:
+    name: Deploy to Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
