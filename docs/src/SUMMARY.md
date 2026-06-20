@@ -2,6 +2,10 @@
 
 [Introduction](introduction.md)
 
+# Example
+
+- [A production deployment](example.md)
+
 # Tutorial
 
 - [Installation](tutorial/installation.md)
@@ -10,10 +14,11 @@
 
 # Guides
 
-- [Applying configurations](guides/apply.md)
-- [The daemon](guides/daemon.md)
+- [The full lifecycle](guides/lifecycle.md)
 - [Provisioning infrastructure](guides/provisioning.md)
+- [Applying configurations](guides/apply.md)
 - [The terminal interface](guides/tui.md)
+- [The daemon](guides/daemon.md)
 
 # Reference
 

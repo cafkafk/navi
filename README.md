@@ -8,44 +8,77 @@ it with production API keys or on multi-user systems.
 
 ![navi demo picture](docs/readme/readme_header.png)
 
-Navi is a deployment tool for NixOS, forked from Colmena. It keeps full
-compatibility with standard Hive configurations and adds a persistent daemon
-that owns connections and task queues, integrated infrastructure provisioning
-through Terranix and Terraform, and a terminal interface for managing large
-fleets.
+Navi is a unified deployment tool for NixOS fleets at scale. It collapses the
+full infrastructure lifecycle into a single declarative, Nix-evaluated workflow:
+cloud provisioning, OS installation, secret delivery, DNS, disk decryption, and
+configuration switching, all from one flake.
 
 ## Overview
 
-Navi introduces a client-server model on top of the Colmena workflow. A
-background daemon manages deployment state and locks, so overlapping operations
-against a shared fleet serialise instead of racing. Navi also bridges
-provisioning and configuration by running Terraform as part of the deployment,
-which lets a single flow create a machine and then deploy NixOS onto it.
+What otherwise takes a stack of separate tools, Terraform to create machines,
+nixos-anywhere to install onto them, a secrets mechanism, a DNS tool, and Colmena
+to switch the configuration, Navi expresses as one Nix evaluation and drives from
+one command. Bringing a group of machines from nothing to their target
+configuration looks like:
+
+```bash
+navi provision --on <selector>
+```
+
+Because the whole lifecycle is evaluated from the same Hive, the command that
+acts on one node acts on a whole class of them with the same shape, on cloud or
+bare metal. Selecting more nodes widens the operation without changing it.
+
+Navi is a fork of Colmena and keeps full compatibility with standard Hive
+configurations, so everything you can already express in Colmena still works.
+The difference is the rest of the lifecycle. Colmena deploys to machines that
+already exist. Navi also creates them, installs NixOS, unlocks their disks,
+manages their DNS, and delivers their secrets, all from the same evaluation
+rather than from separate tools wired together by hand.
 
 ## Features
 
-The terminal interface, opened with `navi tui`, manages a fleet interactively.
-It shows nodes in a hierarchy you can organise by category, environment, or
-hostgroup, streams live logs, RAM usage, and active tasks, and lets you deploy,
-garbage collect, or apply locally from the current selection. For any node it
-shows metadata such as its address, tags, and git revision, and it aggregates
-and filters logs from local and remote operations.
+Provisioning is the part that does not exist in Colmena. You declare
+infrastructure alongside your nodes in the same Hive, and `navi provision` plans,
+applies, and destroys it through Terranix and Terraform. Navi manages the
+Terraform lock file and state, captures outputs as persistent facts that later
+stages read, and bootstraps fresh machines with nixos-anywhere once they exist.
+Google Cloud Platform is supported natively, including authentication and access
+through an Identity-Aware Proxy tunnel.
 
-Infrastructure provisioning is integrated through Terranix. You define Terraform
-resources alongside your nodes in the same Hive, and `navi provision` plans,
-applies, and destroys them. Navi manages the Terraform lock file and state,
-captures outputs as persistent facts, and can bootstrap fresh machines with
-nixos-anywhere once they exist. Google Cloud Platform is supported natively,
-including authentication and access through an Identity-Aware Proxy tunnel.
+The lifecycle reaches all the way onto encrypted, bare-metal hardware. The
+`navi disk-unlock` command unlocks encrypted ZFS pools on a remote host,
+including over SSH in initrd, so a machine that boots into an encrypted volume
+can still be brought up as part of a deploy. Every deployment writes provenance
+metadata, namely the git commit, deployer identity, and timestamp, to
+`/etc/navi/provenance.json` on the target. Navi compares local closures against
+remote systems with `nvd` to show package-level diffs before deploying, and it
+can fetch DNS and glue record status from providers such as Porkbun and
+Namecheap.
 
-The deployment layer adds several capabilities beyond Colmena. The daemon allows
-detached operations and prevents race conditions. The `navi disk-unlock` command
-unlocks encrypted ZFS pools on a remote host, including over SSH in initrd. Every
-deployment writes provenance metadata, namely the git commit, deployer identity,
-and timestamp, to `/etc/navi/provenance.json` on the target. Navi compares local
-closures against remote systems with `nvd` to show package-level diffs before
-deploying, and it can fetch DNS and glue record status from providers such as
-Porkbun and Namecheap.
+Two capabilities support operating a fleet of this size. The terminal interface,
+opened with `navi tui`, shows nodes in a hierarchy you can organise by category,
+environment, or hostgroup, streams live logs, RAM usage, and active tasks, and
+lets you deploy, garbage collect, or apply locally from the current selection. A
+background daemon owns connections and locks, so overlapping operations across
+many nodes run concurrently without racing and can continue after the client
+that started them exits.
+
+## Example
+
+To show what this looks like at scale rather than on one node, Navi is used to
+run a heterogeneous production fleet from a single flake: around thirty GCP
+virtual machines grouped across several tenants and environments, alongside
+on-prem hardware on encrypted ZFS that is unlocked remotely as part of a deploy.
+
+From that one description, operations that would otherwise be multi-step runbooks
+reduce to a command each. Standing up a whole tenant from nothing, machines
+created, NixOS installed, configuration switched, is `navi provision --on
+<tenant>-*`. Rolling a change to an environment is `navi apply --on @staging`.
+Unlocking an encrypted on-prem node so it can finish booting is
+`navi disk-unlock <node>`. None of these does something separate tools could not,
+but they come from one source of truth, and scaling up means selecting more
+nodes, not adding more steps.
 
 ## Documentation
 

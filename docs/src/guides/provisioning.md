@@ -1,18 +1,24 @@
 # Provisioning infrastructure
 
-Navi can create the machines it deploys to, not just configure existing ones. It
-integrates Terranix and Terraform so that infrastructure and NixOS
-configuration live in the same Hive.
+Provisioning is where Navi's lifecycle begins, before any machine exists. It
+creates the machines, then installs NixOS onto them and hands off to the
+configuration switch, all from the same Hive. For the bigger picture of how this
+fits together, see [The full lifecycle](lifecycle.md).
+
+Navi integrates Terranix and Terraform so that infrastructure and NixOS
+configuration live in one place.
 
 ## The model
 
 You declare infrastructure resources alongside your nodes. Navi renders the
 Terranix expressions to Terraform, runs Terraform to create the resources, and
 captures the outputs as facts. Those facts, such as a freshly assigned IP
-address, become available to the rest of the deployment.
+address, become available to the rest of the deployment without you copying them
+between tools.
 
-This closes the gap between provisioning and configuration. A single workflow
-can stand up a cloud instance and then deploy a NixOS system onto it.
+This closes the gap between provisioning and configuration. A single command can
+stand up cloud instances, install NixOS onto them, and switch them to their
+target configuration.
 
 ## Provisioning commands
 
