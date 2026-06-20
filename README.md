@@ -82,6 +82,10 @@ nodes, not adding more steps.
 
 ## Documentation
 
+The manual is hosted at <https://cafkafk.github.io/navi>. It is published from
+`main` on every push, and its command-line reference is generated from the navi
+binary, so it stays in sync with the code.
+
 The manual lives in `docs/` and is built with mdBook. To read it locally with
 live reload, serve it on http://127.0.0.1:3000:
 
@@ -235,9 +239,10 @@ now.
 
 ### Where is the documentation?
 
-The manual is in `docs/` and is built with mdBook. See the documentation
-section above for how to read or build it. The command-line reference is
-generated from the binary, so it stays in sync with the actual commands.
+The manual is hosted at <https://cafkafk.github.io/navi>. It lives in `docs/`
+and is built with mdBook; see the documentation section above for how to read or
+build it locally. The command-line reference is generated from the binary, so it
+stays in sync with the actual commands.
 
 The source code is still the most complete reference, and for anything the
 manual does not yet cover, reading the source is the right move.
