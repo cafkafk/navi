@@ -43,6 +43,12 @@ These cover features Navi adds on top of Colmena, without depending on any cloud
   boundary, and checks that Navi resolves and runs it. Real provisioners talk to
   Terraform or to hardware; the `command` type lets the orchestration be tested
   in isolation.
+- `terranix-real` drives the `terranix` provisioner end to end against a real
+  OpenTofu. A tofunix module is rendered to config.tf.json at build time, and
+  the test checks that Navi realizes it, runs init, plan, and apply, and
+  captures the outputs as facts. It uses no third-party provider, so the
+  OpenTofu run stays offline; the outputs alone exercise Navi's whole terranix
+  path.
 
 ## Work in progress
 

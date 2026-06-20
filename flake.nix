@@ -17,6 +17,12 @@
 
     flake-parts.url = "github:hercules-ci/flake-parts";
     crane.url = "github:ipetkov/crane";
+
+    # Fork of terranix, used by the terranix provisioner integration test.
+    tofunix = {
+      url = "github:cafkafk/tofunix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
   };
 
   outputs = inputs@{ flake-parts, ... }:

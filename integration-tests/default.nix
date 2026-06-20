@@ -32,6 +32,7 @@
   provenance = import ./provenance { inherit pkgs; };
   daemon = import ./daemon { inherit pkgs; };
   provision-command = import ./provision-command { inherit pkgs; };
+  terranix-real = import ./terranix-real { inherit pkgs; };
 
   # facts is intentionally not wired in yet. `navi facts derive` shells out to
   # `nix eval`/`nix build`, which re-instantiate Navi's whole flake input
