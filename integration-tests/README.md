@@ -1,4 +1,53 @@
 # Integration Tests
 
-A set of integration tests using the NixOS test framework.
-To run the tests, use `nix-build default.nix`.
+A set of integration tests using the NixOS test framework. Each test brings up
+one or more virtual machines, runs Navi inside them, and asserts on the result.
+
+To run a single test:
+
+    nix build .#checks.x86_64-linux.<name>
+
+To run the whole suite:
+
+    nix-build default.nix
+
+## Harness
+
+`tools.nix` builds the shared fixture: a `deployer` node with Navi and a
+prebuilt system closure, and zero or more minimal `target` nodes. A test is a
+directory containing:
+
+- `default.nix`, which calls `tools.runTest` with the test name and a bundle.
+- `hive.nix` (or `flake.nix` for flake tests), the configuration under test.
+- `test-script.py`, the Python driver run by the NixOS test framework. The
+  harness injects setup before it, including the `navi` binary path.
+
+The deployer has no network access during the test, so anything a command needs
+must be in the Nix store before the run. `tools.nix` arranges this for the
+prebuilt target closure and for flake inputs.
+
+## Tests inherited from Colmena
+
+`apply`, `apply-local`, `build-on-target`, `exec`, `flakes`, `parallel`, and
+`allow-apply-all` cover the deployment behaviour Navi shares with Colmena.
+
+## Navi-specific tests
+
+These cover features Navi adds on top of Colmena, without depending on any cloud:
+
+- `provenance` switches a target and checks that `/etc/navi/provenance.json` is
+  written with the expected fields and permissions.
+- `daemon` starts the background daemon, waits for its socket, and checks that
+  `navi daemon status` reports it running.
+- `provision-command` uses a `command` provisioner to stand in for the cloud
+  boundary, and checks that Navi resolves and runs it. Real provisioners talk to
+  Terraform or to hardware; the `command` type lets the orchestration be tested
+  in isolation.
+
+## Work in progress
+
+- `facts` (in `./facts`, not yet wired into `default.nix`) derives facts from a
+  flake's `facts` output. `navi facts derive` shells out to `nix eval` and
+  `nix build`, which re-instantiate Navi's whole flake input closure; making
+  that work with no network in the VM needs more offline plumbing before the
+  test can join the suite.
