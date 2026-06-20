@@ -27,7 +27,7 @@ jobs:
       - name: Restore and cache Nix store
         uses: nix-community/cache-nix-action@v3
         with:
-          primary-key: pages-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
+          key: pages-${{ runner.os }}-${{ hashFiles('**/*.nix', '**/flake.lock', 'Cargo.lock') }}
           restore-keys: |
             pages-${{ runner.os }}-
       - name: Build the manual
