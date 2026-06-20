@@ -3,3 +3,6 @@ result*
 /.direnv
 /.vscode
 .navi/
+
+# mdBook output
+/docs/book

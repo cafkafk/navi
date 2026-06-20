@@ -9,6 +9,9 @@
         inherit craneLib;
         nixos-anywhere = inputs.nixos-anywhere.packages.${system}.nixos-anywhere;
       };
+      manual = pkgs.callPackage ./manual.nix {
+        inherit (config.packages) navi;
+      };
       default = config.packages.navi;
     };
   };

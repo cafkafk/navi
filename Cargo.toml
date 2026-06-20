@@ -12,6 +12,7 @@ async-stream = "0.3.5"
 async-trait = "0.1.68"
 clap = { version = "4.3", features = ["derive", "wrap_help"] }
 clap_complete = "4.3"
+clap-markdown = "0.1"
 clicolors-control = "1"
 console = "0.16.0"
 const_format = "0.2.30"

@@ -22,6 +22,8 @@
       nix
       sshpass
       socat
+
+      mdbook
     ];
   };
 };

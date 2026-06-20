@@ -244,6 +244,10 @@ pub enum Command {
     GenCompletions {
         shell: Shell,
     },
+
+    /// Generate the command-line reference in Markdown (Internal)
+    #[command(hide = true)]
+    GenManual,
 }
 
 #[derive(Subcommand, Debug)]
