@@ -82,12 +82,15 @@ nodes, not adding more steps.
 
 ## Documentation
 
-The manual lives in `docs/` and is built with mdBook. To read it locally:
+The manual lives in `docs/` and is built with mdBook. To read it locally with
+live reload, serve it on http://127.0.0.1:3000:
 
 ```bash
-nix develop
-mdbook serve docs
+nix run .#serve-manual
 ```
+
+That accepts the usual `mdbook serve` arguments, for example
+`nix run .#serve-manual -- --port 8080`.
 
 You can also build it as a Nix package, which regenerates the command-line
 reference from the binary:
