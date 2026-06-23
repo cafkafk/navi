@@ -237,7 +237,12 @@ fn print_manual() {
 
 fn set_color_pref(when: &ColorWhen) {
     if when != &ColorWhen::Auto {
-        clicolors_control::set_colors_enabled(when == &ColorWhen::Always);
+        let enabled = when == &ColorWhen::Always;
+        clicolors_control::set_colors_enabled(enabled);
+        // `console` keeps its own color state, independent of clicolors-control,
+        // so it must be told explicitly or `--color always|never` is ignored for
+        // anything styled via `console::Style` (e.g. `navi list`, progress output).
+        console::set_colors_enabled(enabled);
     }
 }
 
