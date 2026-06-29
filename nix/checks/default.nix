@@ -10,9 +10,9 @@
             patches = (old.patches or [ ]) ++ [
               (
                 if builtins.compareVersions old.version "2.25.0" >= 0 then
-                  ./nix-eval-jobs-unstable.patch
+                  ./patches/nix-eval-jobs-unstable.patch
                 else
-                  ./nix-eval-jobs-stable.patch
+                  ./patches/nix-eval-jobs-stable.patch
               )
             ];
             # To silence the warning
