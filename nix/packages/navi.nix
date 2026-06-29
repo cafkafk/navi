@@ -17,8 +17,7 @@ let
     (root + "/.github")
     (root + "/renovate.json")
 
-    (root + "/integration-tests")
-
+    # The integration tests live under nix/, which is already excluded below.
     (root + "/nix")
   ];
   srcFiles = fs.difference root srcIgnored;

@@ -14,7 +14,7 @@ let
 
   applyFlags = "--evaluator ${evaluator} ${extraApplyFlags}" + lib.optionalString (!pure) "--impure";
 
-  # From integration-tests/nixpkgs.nix
+  # From ./nixpkgs.nix
   naviFlakeInputs = pkgs._inputs;
 
   # Store paths of every flake input AND its transitive inputs. The deployer

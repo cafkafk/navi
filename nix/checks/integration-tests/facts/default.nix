@@ -8,7 +8,7 @@ let
     prebuiltTarget = null;
   };
 
-  # From integration-tests/nixpkgs.nix
+  # From ./nixpkgs.nix
   naviFlakeInputs = pkgs._inputs;
 
   # Store paths of every flake input AND its transitive inputs. `navi facts

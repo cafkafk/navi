@@ -30,7 +30,7 @@
 
   in {
     checks = if pkgs.stdenv.isLinux then
-      import ../../integration-tests {
+      import ./integration-tests {
         pkgs = import inputs.nixpkgs {
           inherit system;
           overlays = [
