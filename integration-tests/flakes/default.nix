@@ -16,12 +16,33 @@ let
 
   # From integration-tests/nixpkgs.nix
   naviFlakeInputs = pkgs._inputs;
+
+  # Store paths of every flake input AND its transitive inputs. The deployer
+  # has no network during the test, so navi's whole flake input closure must be
+  # in the store: evaluating navi's flake pulls in flake-parts, which in turn
+  # pulls in nix-community/nixpkgs.lib. Vendoring only the direct inputs left
+  # that transitive input unresolved, so the offline deploy tried to fetch it
+  # from github.com and failed. Dedupe by path to terminate on `follows` cycles.
+  naviFlakeInputClosure =
+    let
+      go =
+        seen: input:
+        if !(input ? outPath) || builtins.elem input.outPath seen then
+          seen
+        else
+          let
+            seen' = seen ++ [ input.outPath ];
+            children = if input ? inputs then builtins.attrValues input.inputs else [ ];
+          in
+          builtins.foldl' go seen' children;
+    in
+    builtins.foldl' go [ ] (builtins.attrValues naviFlakeInputs);
 in
 tools.runTest {
   name = "navi-flakes-${evaluator}" + lib.optionalString (!pure) "-impure";
 
   nodes.deployer = {
-    virtualisation.additionalPaths = lib.mapAttrsToList (k: v: v.outPath) naviFlakeInputs;
+    virtualisation.additionalPaths = naviFlakeInputClosure;
   };
 
   navi.test = {
@@ -32,7 +53,7 @@ tools.runTest {
         import re
 
         deployer.succeed("sed -i 's @nixpkgs@ path:${pkgs._inputs.nixpkgs.outPath}?narHash=${pkgs._inputs.nixpkgs.narHash} g' /tmp/bundle/flake.nix")
-        deployer.succeed("sed -i 's @navi@ path:${tools.navi.src} g' /tmp/bundle/flake.nix")
+        deployer.succeed("sed -i 's @navi@ path:${pkgs._inputs.self.outPath} g' /tmp/bundle/flake.nix")
 
         with subtest("Lock flake dependencies"):
             deployer.succeed("cd /tmp/bundle && nix --extra-experimental-features \"nix-command flakes\" flake lock")
