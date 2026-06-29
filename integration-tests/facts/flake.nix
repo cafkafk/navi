@@ -4,21 +4,13 @@
   inputs = {
     nixpkgs.url = "@nixpkgs@";
 
+    # navi is its real flake source (pkgs._inputs.self). The deployer has no
+    # network, so navi's whole transitive input closure is staged into the
+    # store by default.nix and locking resolves it from navi's own lockfile
+    # pins. We deliberately do NOT use `follows` overrides here: overriding a
+    # transitive input forces nix to re-resolve it at lock time, which fails
+    # against the empty offline registry ("cannot find flake 'flake:flake-parts'").
     navi.url = "@navi@";
-    # `navi facts derive` shells out to `nix eval`, which instantiates this
-    # flake and eagerly fetches the whole locked input closure of `navi`. The
-    # VM has no network, so collapse navi's heavy transitive inputs onto inputs
-    # that are already present. `navi.lib.makeHive`, all this test needs from
-    # navi, does not use any of them.
-    navi.inputs.nixpkgs.follows = "nixpkgs";
-    navi.inputs.stable.follows = "nixpkgs";
-    navi.inputs.nixos-anywhere.follows = "nixpkgs";
-    navi.inputs.nix-github-actions.follows = "nixpkgs";
-    # flake-parts and crane are kept real: navi's own flake uses
-    # flake-parts.lib.mkFlake, and both are already present in the VM store.
-    # flake-parts pulls nixpkgs-lib from github, so point it at the local
-    # nixpkgs (which exposes lib) to keep the evaluation offline.
-    navi.inputs.flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
   };
 
   outputs =
