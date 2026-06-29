@@ -54,11 +54,7 @@ These cover features Navi adds on top of Colmena, without depending on any cloud
   captures the outputs as facts. It uses no third-party provider, so the
   OpenTofu run stays offline; the outputs alone exercise Navi's whole terranix
   path.
-
-## Work in progress
-
-- `facts` (in `./facts`, not yet wired into `default.nix`) derives facts from a
-  flake's `facts` output. `navi facts derive` shells out to `nix eval` and
-  `nix build`, which re-instantiate Navi's whole flake input closure; making
-  that work with no network in the VM needs more offline plumbing before the
-  test can join the suite.
+- `facts` derives facts from a flake's `facts` output. `navi facts derive`
+  shells out to `nix eval` and `nix build`, so the test stages Navi's whole
+  flake input closure into the store and pre-builds the fact outputs, letting
+  the derivation run with no network in the VM.
