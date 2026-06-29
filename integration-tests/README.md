@@ -9,7 +9,12 @@ To run a single test:
 
 To run the whole suite:
 
-    nix-build default.nix
+    nix flake check
+
+The tests are exposed as flake checks (see `nix/checks/default.nix`), which is
+how CI runs them. Building `integration-tests/default.nix` directly is not
+supported on its own: it falls back to `nixpkgs.nix`, which expects a
+`flake-compat.nix` and overlay wiring that only the flake provides.
 
 ## Harness
 
